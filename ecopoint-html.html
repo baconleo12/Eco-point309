@@ -13,7 +13,6 @@
     <div id="app"></div>
 
     <script>
-        // ข้อมูลประเภทขยะ
         const trashTypes = [
             { id: 1, name: 'ขวดใหญ่', points: 10, icon: '🍾' },
             { id: 2, name: 'ขวดเล็ก', points: 5, icon: '🧴' }
@@ -27,24 +26,26 @@
             { id: 5, name: 'เสื้อโรงเรียน', points: 500, icon: '👕' }
         ];
 
-        // ตัวแปรสถานะ
+        const ADMIN_USERNAME = 'admin';
+        const ADMIN_PASSWORD = 'admin123';
+
         let currentUser = null;
+        let isAdmin = false;
         let users = JSON.parse(localStorage.getItem('ecopoint_users') || '[]');
         let transactions = JSON.parse(localStorage.getItem('ecopoint_transactions') || '[]');
         let currentPage = 'home';
+        let editingUser = null;
 
-        // ฟังก์ชันบันทึกข้อมูล
         function saveData() {
             localStorage.setItem('ecopoint_users', JSON.stringify(users));
             localStorage.setItem('ecopoint_transactions', JSON.stringify(transactions));
         }
 
-        // ฟังก์ชันเข้าสู่ระบบ
-        function handleLogin() {
-            const name = document.getElementById('login-name').value.trim();
+        function handleStudentLogin() {
             const studentId = document.getElementById('login-id').value.trim();
+            const password = document.getElementById('login-password').value.trim();
             
-            if (!name || !studentId) {
+            if (!studentId || !password) {
                 alert('กรุณากรอกข้อมูลให้ครบถ้วน');
                 return;
             }
@@ -52,110 +53,631 @@
             let user = users.find(u => u.studentId === studentId);
             
             if (!user) {
-                user = {
-                    id: Date.now(),
-                    name: name,
-                    studentId: studentId,
-                    points: 0,
-                    totalTrash: 0
-                };
-                users.push(user);
-                saveData();
+                alert('ไม่พบรหัสนักเรียนนี้ในระบบ กรุณาติดต่อ Admin');
+                return;
+            }
+
+            if (user.password !== password) {
+                alert('รหัสผ่านไม่ถูกต้อง');
+                return;
             }
             
             currentUser = user;
-            currentPage = 'dashboard';
+            currentPage = 'profile';
             render();
         }
 
-        // ฟังก์ชันออกจากระบบ
+        function handleAdminLogin() {
+            const username = document.getElementById('admin-username').value.trim();
+            const password = document.getElementById('admin-password').value.trim();
+            
+            if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+                isAdmin = true;
+                currentPage = 'admin-dashboard';
+                render();
+            } else {
+                alert('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+            }
+        }
+
         function handleLogout() {
             currentUser = null;
+            isAdmin = false;
             currentPage = 'home';
             render();
         }
 
-        // ฟังก์ชันแลกขยะ
-        function handleTrashExchange(trashType, weight) {
-            if (!weight || weight <= 0) {
-                alert('กรุณาใส่น้ำหนักที่ถูกต้อง');
+        function createNewUser() {
+            const name = prompt('ชื่อ-นามสกุล:');
+            if (!name) {
+                alert('กรุณากรอกชื่อ-นามสกุล');
+                return;
+            }
+            
+            const studentId = prompt('รหัสนักเรียน:');
+            if (!studentId) {
+                alert('กรุณากรอกรหัสนักเรียน');
                 return;
             }
 
+            if (users.find(u => u.studentId === studentId)) {
+                alert('รหัสนักเรียนนี้มีในระบบแล้ว');
+                return;
+            }
+            
+            const password = prompt('รหัสผ่าน:');
+            if (!password) {
+                alert('กรุณากรอกรหัสผ่าน');
+                return;
+            }
+
+            const newUser = {
+                id: Date.now(),
+                name: name.trim(),
+                studentId: studentId.trim(),
+                password: password.trim(),
+                points: 0,
+                totalTrash: 0,
+                createdAt: new Date().toISOString()
+            };
+            
+            users.push(newUser);
+            saveData();
+            alert('สร้างบัญชีสำเร็จ!\nชื่อ: ' + newUser.name + '\nรหัส: ' + newUser.studentId);
+            currentPage = 'admin-dashboard';
+            render();
+        }
+
+        function deleteUser(userId) {
+            const user = users.find(u => u.id === userId);
+            if (!user) return;
+            
+            if (!confirm('ต้องการลบบัญชี ' + user.name + ' ใช่หรือไม่?')) {
+                return;
+            }
+            
+            const confirmText = user.name;
+            const userInput = prompt('กรุณาพิมพ์ชื่อนักเรียนเพื่อยืนยัน:\n"' + confirmText + '"');
+            
+            if (userInput === null) {
+                return;
+            }
+            
+            if (userInput.trim() !== confirmText) {
+                alert('ชื่อไม่ตรงกัน - ยกเลิกการลบ');
+                return;
+            }
+            
+            users = users.filter(u => u.id !== userId);
+            transactions = transactions.filter(t => t.userId !== userId);
+            saveData();
+            alert('ลบบัญชี ' + user.name + ' สำเร็จ');
+            currentPage = 'admin-dashboard';
+            render();
+        }
+        
+        function handleDeleteUser(userId) {
+            deleteUser(userId);
+        }
+        
+        function handleAddPoints(userId) {
+            addPoints(userId);
+        }
+        
+        function handleEditPoints(userId) {
+            editPoints(userId);
+        }
+        
+        function handleResetPassword(userId) {
+            resetPassword(userId);
+        }
+        
+        window.handleDeleteUser = handleDeleteUser;
+        window.handleAddPoints = handleAddPoints;
+        window.handleEditPoints = handleEditPoints;
+        window.handleResetPassword = handleResetPassword;
+
+        function resetPassword(userId) {
+            const newPassword = prompt('รหัสผ่านใหม่:');
+            if (!newPassword) return;
+            
+            users = users.map(u => 
+                u.id === userId ? { ...u, password: newPassword } : u
+            );
+            saveData();
+            alert('รีเซ็ตรหัสผ่านสำเร็จ!');
+            render();
+        }
+
+        function editPoints(userId) {
+            const user = users.find(u => u.id === userId);
+            const newPoints = prompt('แก้ไขคะแนนของ ' + user.name + '\nคะแนนปัจจุบัน: ' + user.points, user.points);
+            
+            if (newPoints === null) return;
+            
+            const points = parseInt(newPoints);
+            if (isNaN(points) || points < 0) {
+                alert('กรุณาใส่ค่าคะแนนที่ถูกต้อง');
+                return;
+            }
+            
+            users = users.map(u => 
+                u.id === userId ? { ...u, points: points } : u
+            );
+            saveData();
+            alert('แก้ไขคะแนนสำเร็จ!');
+            render();
+        }
+
+        function addPoints(userId) {
+            const user = users.find(u => u.id === userId);
+            editingUser = user;
+            currentPage = 'admin-add-points';
+            render();
+        }
+
+        function submitAdminExchange() {
+            const trashId = document.getElementById('admin-trash-type').value;
+            const weight = parseFloat(document.getElementById('admin-weight').value);
+            
+            if (!trashId || !weight || weight <= 0) {
+                alert('กรุณากรอกข้อมูลให้ครบถ้วน');
+                return;
+            }
+
+            const trashType = trashTypes.find(t => t.id === parseInt(trashId));
             const pointsEarned = Math.floor(trashType.points * weight);
             
             users = users.map(u => 
-                u.id === currentUser.id 
-                    ? { ...u, points: u.points + pointsEarned, totalTrash: u.totalTrash + parseFloat(weight) }
+                u.id === editingUser.id 
+                    ? { ...u, points: u.points + pointsEarned, totalTrash: u.totalTrash + weight }
                     : u
             );
 
             transactions.push({
                 id: Date.now(),
-                userId: currentUser.id,
+                userId: editingUser.id,
+                userName: editingUser.name,
                 trashType: trashType.name,
-                weight: parseFloat(weight),
+                weight: weight,
                 points: pointsEarned,
-                date: new Date().toLocaleDateString('th-TH')
+                date: new Date().toISOString(),
+                addedBy: 'admin'
             });
 
-            currentUser = users.find(u => u.id === currentUser.id);
             saveData();
-            
-            alert(`แลกขยะสำเร็จ! ได้รับ ${pointsEarned} EcoPoint`);
+            alert('บันทึกสำเร็จ! ' + editingUser.name + ' ได้รับ ' + pointsEarned + ' EcoPoint');
+            editingUser = null;
+            currentPage = 'admin-dashboard';
             render();
         }
 
-        // ฟังก์ชันแลกของรางวัล
-        function handleRewardExchange(reward) {
-            if (currentUser.points < reward.points) {
+        function exportData() {
+            const data = {
+                users: users,
+                transactions: transactions,
+                exportDate: new Date().toISOString()
+            };
+            
+            const dataStr = JSON.stringify(data, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'ecopoint-backup-' + new Date().toISOString().split('T')[0] + '.json';
+            link.click();
+            URL.revokeObjectURL(url);
+            alert('ส่งออกข้อมูลสำเร็จ!');
+        }
+
+        function importData() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'application/json';
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        if (confirm('นำเข้าข้อมูลจะเขียนทับข้อมูลเดิม ต้องการดำเนินการต่อหรือไม่?')) {
+                            users = data.users || [];
+                            transactions = data.transactions || [];
+                            saveData();
+                            alert('นำเข้าข้อมูลสำเร็จ!');
+                            render();
+                        }
+                    } catch (error) {
+                        alert('ไฟล์ไม่ถูกต้อง');
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+
+        function handleRewardExchange(rewardId, rewardName, rewardPoints) {
+            if (currentUser.points < rewardPoints) {
                 alert('EcoPoint ไม่เพียงพอ');
                 return;
             }
 
-            if (confirm(`ต้องการแลก ${reward.name} ใช่หรือไม่? (${reward.points} EcoPoint)`)) {
+            if (confirm('ต้องการแลก ' + rewardName + ' ใช่หรือไม่? (' + rewardPoints + ' EcoPoint)')) {
                 users = users.map(u => 
                     u.id === currentUser.id 
-                        ? { ...u, points: u.points - reward.points }
+                        ? { ...u, points: u.points - rewardPoints }
                         : u
                 );
+                
+                transactions.push({
+                    id: Date.now(),
+                    userId: currentUser.id,
+                    userName: currentUser.name,
+                    trashType: 'แลกของรางวัล',
+                    rewardName: rewardName,
+                    points: -rewardPoints,
+                    date: new Date().toISOString()
+                });
+                
                 currentUser = users.find(u => u.id === currentUser.id);
                 saveData();
-                alert(`แลกรางวัล ${reward.name} สำเร็จ!`);
+                alert('แลกรางวัล ' + rewardName + ' สำเร็จ!');
                 render();
             }
         }
 
-        // แสดงหน้าแรก (Login)
-        function renderHome() {
-            return `
-                <div class="max-w-4xl mx-auto pt-8 px-4">
-                    <div class="text-center mb-12">
-                        <div class="text-6xl mb-4">♻️</div>
-                        <h1 class="text-4xl font-bold text-green-700 mb-2">ตรวจสอบคะแนน EcoPoint</h1>
-                        <p class="text-gray-600">นวัตกรรมเพื่อสิ่งแวดล้อม - โรงเรียน</p>
-                    </div>
+        function changePage(page) {
+            currentPage = page;
+            render();
+        }
 
-                    <div class="grid md:grid-cols-2 gap-8 mb-12">
-                        <div class="bg-white p-6 rounded-lg shadow-md">
-                            <h2 class="text-xl font-bold mb-4 text-green-700">เข้าสู่ระบบ / ลงทะเบียน</h2>
-                            <div>
-                                <div class="mb-4">
-                                    <label class="block text-sm font-medium mb-2">ชื่อ-นามสกุล</label>
-                                    <input type="text" id="login-name" class="w-full p-2 border rounded" />
+        function render() {
+            const app = document.getElementById('app');
+            let html = '';
+            
+            if (isAdmin) {
+                if (currentPage === 'admin-dashboard') {
+                    const sortedUsers = [...users].sort((a, b) => b.points - a.points);
+                    const recentTransactions = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 20);
+                    
+                    html = `
+                        <nav class="bg-blue-600 text-white shadow-md">
+                            <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-3xl">👨‍💼</span>
+                                    <h1 class="text-xl font-bold">Admin Panel</h1>
                                 </div>
-                                <div class="mb-4">
-                                    <label class="block text-sm font-medium mb-2">รหัสนักเรียน</label>
-                                    <input type="text" id="login-id" class="w-full p-2 border rounded" />
+                                <button onclick="handleLogout()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded transition">
+                                    ออกจากระบบ
+                                </button>
+                            </div>
+                        </nav>
+                        <div class="max-w-6xl mx-auto p-4 py-8">
+                            <div class="mb-6 flex justify-between items-center">
+                                <h2 class="text-2xl font-bold text-blue-700">Admin Dashboard</h2>
+                                <div class="flex gap-2">
+                                    <button onclick="exportData()" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition">
+                                        📥 ส่งออกข้อมูล
+                                    </button>
+                                    <button onclick="importData()" class="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition">
+                                        📤 นำเข้าข้อมูล
+                                    </button>
+                                    <button onclick="createNewUser()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                                        + สร้างบัญชีใหม่
+                                    </button>
                                 </div>
-                                <button onclick="handleLogin()" class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition">
-                                    เข้าสู่ระบบ
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-4 mb-6">
+                                <div class="bg-white p-4 rounded-lg shadow">
+                                    <div class="text-gray-500 text-sm">จำนวนนักเรียน</div>
+                                    <div class="text-3xl font-bold text-blue-600">${users.length}</div>
+                                </div>
+                                <div class="bg-white p-4 rounded-lg shadow">
+                                    <div class="text-gray-500 text-sm">ธุรกรรมทั้งหมด</div>
+                                    <div class="text-3xl font-bold text-green-600">${transactions.length}</div>
+                                </div>
+                                <div class="bg-white p-4 rounded-lg shadow">
+                                    <div class="text-gray-500 text-sm">ขยะรวม (กก.)</div>
+                                    <div class="text-3xl font-bold text-purple-600">
+                                        ${users.reduce((sum, u) => sum + u.totalTrash, 0).toFixed(1)}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                                <h3 class="text-xl font-bold mb-4">จัดการบัญชีนักเรียน</h3>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="p-3 text-left">รหัส</th>
+                                                <th class="p-3 text-left">ชื่อ</th>
+                                                <th class="p-3 text-right">คะแนน</th>
+                                                <th class="p-3 text-right">ขยะ (กก.)</th>
+                                                <th class="p-3 text-center">จัดการ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${sortedUsers.map(user => `
+                                                <tr class="border-b hover:bg-gray-50">
+                                                    <td class="p-3">${user.studentId}</td>
+                                                    <td class="p-3 font-medium">${user.name}</td>
+                                                    <td class="p-3 text-right text-green-600 font-bold">${user.points}</td>
+                                                    <td class="p-3 text-right">${user.totalTrash.toFixed(1)}</td>
+                                                    <td class="p-3">
+                                                        <div class="flex gap-2 justify-center flex-wrap">
+                                                            <button onclick="handleAddPoints(${user.id})" 
+                                                                class="bg-green-500 text-white px-2 py-1 rounded text-sm hover:bg-green-600">
+                                                                เพิ่ม
+                                                            </button>
+                                                            <button onclick="handleEditPoints(${user.id})" 
+                                                                class="bg-blue-500 text-white px-2 py-1 rounded text-sm hover:bg-blue-600">
+                                                                แก้ไข
+                                                            </button>
+                                                            <button onclick="handleResetPassword(${user.id})" 
+                                                                class="bg-yellow-500 text-white px-2 py-1 rounded text-sm hover:bg-yellow-600">
+                                                                รีเซ็ต
+                                                            </button>
+                                                            <button onclick="handleDeleteUser(${user.id})" 
+                                                                class="bg-red-500 text-white px-2 py-1 rounded text-sm hover:bg-red-600">
+                                                                ลบ
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-lg shadow-md p-6">
+                                <h3 class="text-xl font-bold mb-4">Log ธุรกรรมล่าสุด</h3>
+                                <div class="space-y-2">
+                                    ${recentTransactions.map(t => `
+                                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded text-sm">
+                                            <div>
+                                                <span class="font-medium">${t.userName || users.find(u => u.id === t.userId)?.name || 'Unknown'}</span>
+                                                <span class="text-gray-500"> • ${t.rewardName ? '🎁 ' + t.rewardName : t.trashType}</span>
+                                                ${t.weight ? '<span class="text-gray-500"> • ' + t.weight + ' กก.</span>' : ''}
+                                            </div>
+                                            <div class="flex items-center gap-4">
+                                                <span class="${t.points > 0 ? 'text-green-600' : 'text-red-600'} font-bold">
+                                                    ${t.points > 0 ? '+' : ''}${t.points}
+                                                </span>
+                                                <span class="text-gray-400 text-xs">
+                                                    ${new Date(t.date).toLocaleString('th-TH')}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else if (currentPage === 'admin-add-points') {
+                    html = `
+                        <nav class="bg-blue-600 text-white shadow-md">
+                            <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-3xl">👨‍💼</span>
+                                    <h1 class="text-xl font-bold">Admin Panel</h1>
+                                </div>
+                                <button onclick="handleLogout()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded transition">
+                                    ออกจากระบบ
+                                </button>
+                            </div>
+                        </nav>
+                        <div class="max-w-6xl mx-auto p-4 py-8">
+                            <div class="max-w-2xl mx-auto">
+                                <div class="bg-white rounded-lg shadow-md p-6">
+                                    <h2 class="text-2xl font-bold mb-6">บันทึกการแลกขยะ</h2>
+                                    <div class="mb-4 p-4 bg-blue-50 rounded">
+                                        <p class="font-medium">นักเรียน: ${editingUser.name}</p>
+                                        <p class="text-sm text-gray-600">รหัส: ${editingUser.studentId}</p>
+                                        <p class="text-sm text-gray-600">คะแนนปัจจุบัน: ${editingUser.points} EcoPoint</p>
+                                    </div>
+                                    
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium mb-2">ประเภทขยะ</label>
+                                        <select id="admin-trash-type" class="w-full p-2 border rounded">
+                                            <option value="">-- เลือกประเภทขยะ --</option>
+                                            ${trashTypes.map(t => `
+                                                <option value="${t.id}">${t.icon} ${t.name} (${t.points} EcoPoint/กก.)</option>
+                                            `).join('')}
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium mb-2">น้ำหนัก (กิโลกรัม)</label>
+                                        <input type="number" step="0.1" min="0.1" id="admin-weight" 
+                                            class="w-full p-2 border rounded" placeholder="0.0" />
+                                    </div>
+                                    
+                                    <div class="flex gap-3">
+                                        <button onclick="submitAdminExchange()" 
+                                            class="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition">
+                                            บันทึก
+                                        </button>
+                                        <button onclick="currentPage='admin-dashboard'; render();" 
+                                            class="flex-1 bg-gray-400 text-white py-2 rounded-lg hover:bg-gray-500 transition">
+                                            ยกเลิก
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            } else if (currentUser) {
+                const userTransactions = transactions.filter(t => t.userId === currentUser.id).sort((a, b) => new Date(b.date) - new Date(a.date));
+                const lastExchange = userTransactions.length > 0 ? new Date(userTransactions[0].date).toLocaleString('th-TH') : 'ยังไม่มีการแลกขยะ';
+                
+                html = `
+                    <nav class="bg-white shadow-md">
+                        <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="text-green-600 text-3xl">♻️</span>
+                                <h1 class="text-xl font-bold text-green-700">EcoPoint</h1>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <div class="text-right">
+                                    <div class="font-medium">${currentUser.studentId}</div>
+                                    <div class="text-sm text-green-600 font-semibold">${currentUser.points} EcoPoint</div>
+                                </div>
+                                <button onclick="handleLogout()" class="p-2 hover:bg-gray-100 rounded-full transition text-xl">
+                                    ⎋
                                 </button>
                             </div>
                         </div>
+                        <div class="max-w-6xl mx-auto px-4 flex gap-4 pb-2">
+                            <button onclick="changePage('profile')" class="px-4 py-2 rounded-t ${currentPage === 'profile' ? 'bg-green-100 text-green-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
+                                โปรไฟล์
+                            </button>
+                            <button onclick="changePage('rewards')" class="px-4 py-2 rounded-t ${currentPage === 'rewards' ? 'bg-purple-100 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
+                                ของรางวัล
+                            </button>
+                        </div>
+                    </nav>
+                    <div class="max-w-6xl mx-auto p-4 py-8">
+                `;
+                
+                if (currentPage === 'profile') {
+                    html += `
+                        <div class="max-w-4xl mx-auto">
+                            <div class="bg-gradient-to-r from-green-500 to-blue-500 rounded-lg shadow-lg p-8 text-white mb-6">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <h2 class="text-3xl font-bold mb-2">${currentUser.name}</h2>
+                                        <p class="text-green-100">รหัส: ${currentUser.studentId}</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-5xl font-bold mb-1">${currentUser.points}</div>
+                                        <div class="text-green-100">EcoPoint</div>
+                                    </div>
+                                </div>
+                                <div class="mt-6 grid grid-cols-2 gap-4">
+                                    <div class="bg-white/20 rounded p-3">
+                                        <div class="text-sm text-green-100">น้ำหนักขยะทั้งหมด</div>
+                                        <div class="text-2xl font-bold">${currentUser.totalTrash.toFixed(1)} กก.</div>
+                                    </div>
+                                    <div class="bg-white/20 rounded p-3">
+                                        <div class="text-sm text-green-100">แลกขยะล่าสุด</div>
+                                        <div class="text-sm font-medium">${lastExchange}</div>
+                                    </div>
+                                </div>
+                            </div>
 
-                        <div class="bg-white p-6 rounded-lg shadow-md">
-                            <h2 class="text-xl font-bold mb-4 text-blue-700">อัตราแลกเปลี่ยน</h2>
+                            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                                <h3 class="text-xl font-bold mb-4 text-gray-800">ประวัติการทำธุรกรรม</h3>
+                                ${userTransactions.length === 0 ? `
+                                    <p class="text-center text-gray-500 py-8">ยังไม่มีประวัติการแลกขยะ</p>
+                                ` : `
+                                    <div class="space-y-3">
+                                        ${userTransactions.slice(0, 10).map(t => `
+                                            <div class="flex items-center justify-between p-4 bg-gray-50 rounded border">
+                                                <div>
+                                                    <div class="font-medium">${t.rewardName ? '🎁 ' + t.rewardName : t.trashType}</div>
+                                                    <div class="text-sm text-gray-500">
+                                                        ${new Date(t.date).toLocaleString('th-TH')}
+                                                        ${t.weight ? ' • ' + t.weight + ' กก.' : ''}
+                                                    </div>
+                                                </div>
+                                                <div class="text-right">
+                                                    <div class="font-bold ${t.points > 0 ? 'text-green-600' : 'text-red-600'}">
+                                                        ${t.points > 0 ? '+' : ''}${t.points} EcoPoint
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                `}
+                            </div>
+                        </div>
+                    `;
+                } else if (currentPage === 'rewards') {
+                    html += `
+                        <div class="max-w-4xl mx-auto">
+                            <h2 class="text-2xl font-bold mb-6 text-purple-700 flex items-center gap-2">
+                                🎁 ของรางวัล
+                            </h2>
+                            <div class="mb-4 p-4 bg-blue-50 rounded-lg">
+                                <p class="text-sm">EcoPoint ของคุณ: <strong class="text-lg text-blue-600">${currentUser.points}</strong> คะแนน</p>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                ${rewards.map(reward => `
+                                    <div class="bg-white p-6 rounded-lg shadow-md">
+                                        <div class="text-5xl mb-3 text-center">${reward.icon}</div>
+                                        <h3 class="font-bold text-lg mb-2 text-center">${reward.name}</h3>
+                                        <p class="text-purple-600 font-medium text-center mb-3">${reward.points} EcoPoint</p>
+                                        <button onclick="handleRewardExchange(${reward.id}, '${reward.name}', ${reward.points})" 
+                                            class="w-full py-2 rounded-lg transition ${
+                                                currentUser.points >= reward.points
+                                                    ? 'bg-purple-600 text-white hover:bg-purple-700'
+                                                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                            }"
+                                            ${currentUser.points < reward.points ? 'disabled' : ''}>
+                                            ${currentUser.points >= reward.points ? 'แลกเลย' : 'EcoPoint ไม่พอ'}
+                                        </button>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += `</div>`;
+            } else {
+                html = `
+                    <div class="max-w-4xl mx-auto pt-8 px-4">
+                        <div class="text-center mb-12">
+                            <div class="text-6xl mb-4">♻️</div>
+                            <h1 class="text-4xl font-bold text-green-700 mb-2">ตรวจสอบคะแนน EcoPoint</h1>
+                            <p class="text-gray-600">นวัตกรรมเพื่อสิ่งแวดล้อม - โรงเรียน</p>
+                        </div>
+
+                        <div class="grid md:grid-cols-2 gap-8 mb-12">
+                            <div class="bg-white p-6 rounded-lg shadow-md">
+                                <h2 class="text-xl font-bold mb-4 text-green-700">เข้าสู่ระบบนักเรียน</h2>
+                                <div>
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium mb-2">รหัสนักเรียน</label>
+                                        <input type="text" id="login-id" class="w-full p-2 border rounded" />
+                                    </div>
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium mb-2">รหัสผ่าน</label>
+                                        <input type="password" id="login-password" class="w-full p-2 border rounded" />
+                                    </div>
+                                    <button onclick="handleStudentLogin()" class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition mb-2">
+                                        เข้าสู่ระบบ
+                                    </button>
+                                    <p class="text-xs text-gray-500 text-center">หากลืมรหัสผ่าน กรุณาติดต่อ Admin</p>
+                                </div>
+                            </div>
+
+                            <div class="bg-white p-6 rounded-lg shadow-md border-2 border-blue-200">
+                                <h2 class="text-xl font-bold mb-4 text-blue-700">เข้าระบบผู้ดูแล</h2>
+                                <div>
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium mb-2">ชื่อผู้ใช้</label>
+                                        <input type="text" id="admin-username" class="w-full p-2 border rounded" />
+                                    </div>
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium mb-2">รหัสผ่าน</label>
+                                        <input type="password" id="admin-password" class="w-full p-2 border rounded" />
+                                    </div>
+                                    <button onclick="handleAdminLogin()" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition">
+                                        เข้าระบบผู้ดูแล
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-lg shadow-md max-w-md mx-auto">
+                            <h2 class="text-xl font-bold mb-4 text-center text-blue-700">อัตราแลกเปลี่ยน</h2>
                             <div class="space-y-3">
                                 ${trashTypes.map(trash => `
                                     <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
@@ -169,216 +691,12 @@
                             </div>
                         </div>
                     </div>
-                </div>
-            `;
-        }
-
-        // แสดงหน้าแลกขยะ
-        function renderExchange() {
-            return `
-                <div class="max-w-2xl mx-auto">
-                    <h2 class="text-2xl font-bold mb-6 text-green-700">แลกขยะรับคะแนน</h2>
-                    
-                    <div class="grid grid-cols-2 gap-4 mb-6">
-                        ${trashTypes.map(trash => `
-                            <button onclick="selectTrash(${trash.id})" 
-                                id="trash-btn-${trash.id}"
-                                class="p-4 rounded-lg border-2 border-gray-200 hover:border-green-300 transition">
-                                <div class="text-4xl mb-2">${trash.icon}</div>
-                                <div class="font-medium text-sm">${trash.name}</div>
-                                <div class="text-green-600 text-xs mt-1">${trash.points} EcoPoint/กก.</div>
-                            </button>
-                        `).join('')}
-                    </div>
-
-                    <div id="exchange-form" class="hidden bg-white p-6 rounded-lg shadow-md">
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium mb-2">น้ำหนัก (กิโลกรัม)</label>
-                            <input type="number" step="0.1" min="0.1" id="trash-weight" 
-                                class="w-full p-2 border rounded" placeholder="0.0" 
-                                oninput="updatePoints()" />
-                        </div>
-                        <div id="points-preview" class="mb-4 p-3 bg-green-50 rounded hidden">
-                            <p class="text-green-700">คะแนนที่จะได้: <strong id="preview-points">0</strong> EcoPoint</p>
-                        </div>
-                        <button onclick="submitExchange()" class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition">
-                            ยืนยันการแลก
-                        </button>
-                    </div>
-                </div>
-            `;
-        }
-
-        // แสดงหน้าอันดับ
-        function renderLeaderboard() {
-            const sortedUsers = [...users].sort((a, b) => b.points - a.points);
-            
-            return `
-                <div class="max-w-2xl mx-auto">
-                    <h2 class="text-2xl font-bold mb-6 text-yellow-700 flex items-center gap-2">
-                        🏆 อันดับผู้นำ
-                    </h2>
-                    <div class="bg-white rounded-lg shadow-md overflow-hidden">
-                        ${sortedUsers.length === 0 ? `
-                            <div class="p-8 text-center text-gray-500">ยังไม่มีข้อมูล</div>
-                        ` : sortedUsers.map((user, index) => `
-                            <div class="flex items-center justify-between p-4 border-b ${
-                                index === 0 ? 'bg-yellow-50' : index === 1 ? 'bg-gray-50' : ''
-                            }">
-                                <div class="flex items-center gap-4">
-                                    <div class="text-2xl font-bold ${
-                                        index === 0 ? 'text-yellow-500' : 
-                                        index === 1 ? 'text-gray-400' : 
-                                        index === 2 ? 'text-orange-400' : 'text-gray-300'
-                                    }">
-                                        #${index + 1}
-                                    </div>
-                                    <div>
-                                        <div class="font-medium">${user.name}</div>
-                                        <div class="text-sm text-gray-500">${user.studentId}</div>
-                                    </div>
-                                </div>
-                                <div class="text-right">
-                                    <div class="font-bold text-green-600">${user.points} EcoPoint</div>
-                                    <div class="text-sm text-gray-500">${user.totalTrash.toFixed(1)} กก.</div>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        }
-
-        // แสดงหน้าของรางวัล
-        function renderRewards() {
-            return `
-                <div class="max-w-2xl mx-auto">
-                    <h2 class="text-2xl font-bold mb-6 text-purple-700 flex items-center gap-2">
-                        🎁 ของรางวัล
-                    </h2>
-                    <div class="mb-4 p-4 bg-blue-50 rounded-lg">
-                        <p class="text-sm">EcoPoint ของคุณ: <strong class="text-lg text-blue-600">${currentUser.points}</strong> คะแนน</p>
-                    </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        ${rewards.map(reward => `
-                            <div class="bg-white p-6 rounded-lg shadow-md">
-                                <div class="text-5xl mb-3">${reward.icon}</div>
-                                <h3 class="font-bold text-lg mb-2">${reward.name}</h3>
-                                <p class="text-purple-600 font-medium mb-3">${reward.points} EcoPoint</p>
-                                <button onclick="handleRewardExchange(${JSON.stringify(reward).replace(/"/g, '&quot;')})"
-                                    class="w-full py-2 rounded-lg transition ${
-                                        currentUser.points >= reward.points
-                                            ? 'bg-purple-600 text-white hover:bg-purple-700'
-                                            : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                                    }"
-                                    ${currentUser.points < reward.points ? 'disabled' : ''}>
-                                    ${currentUser.points >= reward.points ? 'แลกเลย' : 'EcoPoint ไม่พอ'}
-                                </button>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        }
-
-        // แสดงเนวิเกชัน
-        function renderNav() {
-            return `
-                <nav class="bg-white shadow-md">
-                    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-                        <div class="flex items-center gap-2">
-                            <span class="text-green-600 text-3xl">♻️</span>
-                            <h1 class="text-xl font-bold text-green-700">EcoPoint</h1>
-                        </div>
-                        <div class="flex items-center gap-4">
-                            <div class="text-right">
-                                <div class="font-medium">${currentUser.name}</div>
-                                <div class="text-sm text-green-600 font-semibold">${currentUser.points} EcoPoint</div>
-                            </div>
-                            <button onclick="handleLogout()" class="p-2 hover:bg-gray-100 rounded-full transition">
-                                ⎋
-                            </button>
-                        </div>
-                    </div>
-                    <div class="max-w-6xl mx-auto px-4 flex gap-4 pb-2">
-                        <button onclick="changePage('dashboard')" class="px-4 py-2 rounded-t ${currentPage === 'dashboard' ? 'bg-green-100 text-green-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
-                            แลกขยะ
-                        </button>
-                        <button onclick="changePage('leaderboard')" class="px-4 py-2 rounded-t ${currentPage === 'leaderboard' ? 'bg-yellow-100 text-yellow-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
-                            อันดับ
-                        </button>
-                        <button onclick="changePage('rewards')" class="px-4 py-2 rounded-t ${currentPage === 'rewards' ? 'bg-purple-100 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
-                            ของรางวัล
-                        </button>
-                    </div>
-                </nav>
-            `;
-        }
-
-        // เปลี่ยนหน้า
-        function changePage(page) {
-            currentPage = page;
-            render();
-        }
-
-        // ตัวแปรสำหรับเก็บขยะที่เลือก
-        let selectedTrash = null;
-
-        function selectTrash(trashId) {
-            selectedTrash = trashTypes.find(t => t.id === trashId);
-            
-            // เปลี่ยนสีปุ่ม
-            trashTypes.forEach(t => {
-                const btn = document.getElementById(`trash-btn-${t.id}`);
-                if (t.id === trashId) {
-                    btn.className = 'p-4 rounded-lg border-2 border-green-500 bg-green-50 transition';
-                } else {
-                    btn.className = 'p-4 rounded-lg border-2 border-gray-200 hover:border-green-300 transition';
-                }
-            });
-            
-            // แสดงฟอร์ม
-            document.getElementById('exchange-form').classList.remove('hidden');
-            document.getElementById('trash-weight').value = '';
-            document.getElementById('points-preview').classList.add('hidden');
-        }
-
-        function updatePoints() {
-            const weight = parseFloat(document.getElementById('trash-weight').value);
-            if (weight > 0 && selectedTrash) {
-                const points = Math.floor(selectedTrash.points * weight);
-                document.getElementById('preview-points').textContent = points;
-                document.getElementById('points-preview').classList.remove('hidden');
-            } else {
-                document.getElementById('points-preview').classList.add('hidden');
+                `;
             }
-        }
-
-        function submitExchange() {
-            const weight = parseFloat(document.getElementById('trash-weight').value);
-            if (selectedTrash && weight > 0) {
-                handleTrashExchange(selectedTrash, weight);
-                selectedTrash = null;
-            }
-        }
-
-        // แสดงผล
-        function render() {
-            const app = document.getElementById('app');
             
-            if (!currentUser) {
-                app.innerHTML = renderHome();
-            } else {
-                let content = '';
-                if (currentPage === 'dashboard') content = renderExchange();
-                else if (currentPage === 'leaderboard') content = renderLeaderboard();
-                else if (currentPage === 'rewards') content = renderRewards();
-                
-                app.innerHTML = renderNav() + `<div class="max-w-6xl mx-auto p-4 py-8">${content}</div>`;
-            }
+            app.innerHTML = html;
         }
 
-        // เริ่มต้นแอป
         render();
     </script>
 </body>
