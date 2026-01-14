@@ -35,6 +35,8 @@
         let transactions = JSON.parse(localStorage.getItem('ecopoint_transactions') || '[]');
         let currentPage = 'home';
         let editingUser = null;
+        let searchQuery = '';
+        let showRegister = false;
 
         function saveData() {
             localStorage.setItem('ecopoint_users', JSON.stringify(users));
@@ -53,7 +55,7 @@
             let user = users.find(u => u.studentId === studentId);
             
             if (!user) {
-                alert('ไม่พบรหัสนักเรียนนี้ในระบบ กรุณาติดต่อ Admin');
+                alert('ไม่พบรหัสนักเรียนนี้ในระบบ');
                 return;
             }
 
@@ -64,6 +66,54 @@
             
             currentUser = user;
             currentPage = 'profile';
+            render();
+        }
+
+        function handleStudentRegister() {
+            const name = document.getElementById('register-name').value.trim();
+            const studentId = document.getElementById('register-id').value.trim();
+            const password = document.getElementById('register-password').value.trim();
+            const confirmPassword = document.getElementById('register-confirm-password').value.trim();
+            
+            if (!name || !studentId || !password || !confirmPassword) {
+                alert('กรุณากรอกข้อมูลให้ครบถ้วน');
+                return;
+            }
+
+            if (password !== confirmPassword) {
+                alert('รหัสผ่านไม่ตรงกัน');
+                return;
+            }
+
+            if (password.length < 4) {
+                alert('รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร');
+                return;
+            }
+
+            if (users.find(u => u.studentId === studentId)) {
+                alert('รหัสนักเรียนนี้มีในระบบแล้ว');
+                return;
+            }
+
+            const newUser = {
+                id: Date.now(),
+                name: name,
+                studentId: studentId,
+                password: password,
+                points: 0,
+                totalTrash: 0,
+                createdAt: new Date().toISOString()
+            };
+            
+            users.push(newUser);
+            saveData();
+            alert('ลงทะเบียนสำเร็จ!\nกรุณาเข้าสู่ระบบด้วยรหัสนักเรียนและรหัสผ่านที่ตั้งไว้');
+            showRegister = false;
+            render();
+        }
+
+        function toggleRegister() {
+            showRegister = !showRegister;
             render();
         }
 
@@ -172,10 +222,25 @@
             resetPassword(userId);
         }
         
+        function handleSearch() {
+            searchQuery = document.getElementById('admin-search').value.toLowerCase();
+            render();
+        }
+        
+        function clearSearch() {
+            searchQuery = '';
+            document.getElementById('admin-search').value = '';
+            render();
+        }
+        
         window.handleDeleteUser = handleDeleteUser;
         window.handleAddPoints = handleAddPoints;
         window.handleEditPoints = handleEditPoints;
         window.handleResetPassword = handleResetPassword;
+        window.handleSearch = handleSearch;
+        window.clearSearch = clearSearch;
+        window.toggleRegister = toggleRegister;
+        window.handleStudentRegister = handleStudentRegister;
 
         function resetPassword(userId) {
             const newPassword = prompt('รหัสผ่านใหม่:');
@@ -340,6 +405,12 @@
             if (isAdmin) {
                 if (currentPage === 'admin-dashboard') {
                     const sortedUsers = [...users].sort((a, b) => b.points - a.points);
+                    
+                    // Filter users by search query
+                    const filteredUsers = searchQuery 
+                        ? sortedUsers.filter(u => u.studentId.toLowerCase().includes(searchQuery))
+                        : sortedUsers;
+                    
                     const recentTransactions = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 20);
                     
                     html = `
@@ -516,6 +587,10 @@
                 const userTransactions = transactions.filter(t => t.userId === currentUser.id).sort((a, b) => new Date(b.date) - new Date(a.date));
                 const lastExchange = userTransactions.length > 0 ? new Date(userTransactions[0].date).toLocaleString('th-TH') : 'ยังไม่มีการแลกขยะ';
                 
+                // Calculate user rank
+                const sortedUsers = [...users].sort((a, b) => b.points - a.points);
+                const userRank = sortedUsers.findIndex(u => u.id === currentUser.id) + 1;
+                
                 html = `
                     <nav class="bg-white shadow-md">
                         <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -556,6 +631,9 @@
                                     <div>
                                         <h2 class="text-3xl font-bold mb-2">${currentUser.name}</h2>
                                         <p class="text-green-100">รหัส: ${currentUser.studentId}</p>
+                                        <div class="mt-2 inline-block bg-yellow-500 px-3 py-1 rounded-full text-sm font-bold">
+                                            🏆 อันดับที่ ${userRank}
+                                        </div>
                                     </div>
                                     <div class="text-right">
                                         <div class="text-5xl font-bold mb-1">${currentUser.points}</div>
