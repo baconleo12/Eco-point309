@@ -53,8 +53,7 @@
             let user = users.find(u => u.studentId === studentId);
             
             if (!user) {
-                alert('ไม่พบรหัสนักเรียนนี้ในระบบ กรุณาติดต่อ Admin'
-                      'ecopoint309@gmail.com');
+                alert('ไม่พบรหัสนักเรียนนี้ในระบบ กรุณาติดต่อ Admin');
                 return;
             }
 
@@ -538,6 +537,9 @@
                             <button onclick="changePage('profile')" class="px-4 py-2 rounded-t ${currentPage === 'profile' ? 'bg-green-100 text-green-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
                                 โปรไฟล์
                             </button>
+                            <button onclick="changePage('leaderboard')" class="px-4 py-2 rounded-t ${currentPage === 'leaderboard' ? 'bg-yellow-100 text-yellow-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
+                                อันดับ
+                            </button>
                             <button onclick="changePage('rewards')" class="px-4 py-2 rounded-t ${currentPage === 'rewards' ? 'bg-purple-100 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
                                 ของรางวัล
                             </button>
@@ -596,6 +598,42 @@
                                         `).join('')}
                                     </div>
                                 `}
+                            </div>
+                        </div>
+                    `;
+                } else if (currentPage === 'leaderboard') {
+                    const sortedUsers = [...users].sort((a, b) => b.points - a.points);
+                    html += `
+                        <div class="max-w-4xl mx-auto">
+                            <h2 class="text-2xl font-bold mb-6 text-yellow-700 flex items-center gap-2">
+                                🏆 อันดับผู้นำ
+                            </h2>
+                            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                                ${sortedUsers.length === 0 ? `
+                                    <p class="text-center text-gray-500 py-8">ยังไม่มีข้อมูล</p>
+                                ` : sortedUsers.map((user, index) => `
+                                    <div class="flex items-center justify-between p-4 border-b ${
+                                        index === 0 ? 'bg-yellow-50' : index === 1 ? 'bg-gray-50' : ''
+                                    } ${user.id === currentUser.id ? 'border-2 border-green-500' : ''}">
+                                        <div class="flex items-center gap-4">
+                                            <div class="text-2xl font-bold ${
+                                                index === 0 ? 'text-yellow-500' : 
+                                                index === 1 ? 'text-gray-400' : 
+                                                index === 2 ? 'text-orange-400' : 'text-gray-300'
+                                            }">
+                                                #${index + 1}
+                                            </div>
+                                            <div>
+                                                <div class="font-medium ${user.id === currentUser.id ? 'text-green-600' : ''}">${user.name}</div>
+                                                <div class="text-sm text-gray-500">${user.studentId}</div>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="font-bold text-green-600">${user.points} EcoPoint</div>
+                                            <div class="text-sm text-gray-500">${user.totalTrash.toFixed(1)} กก.</div>
+                                        </div>
+                                    </div>
+                                `).join('')}
                             </div>
                         </div>
                     `;
