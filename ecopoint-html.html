@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ตรวจสอบคะแนน EcoPoint</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-green-50 to-blue-50 min-h-screen">
+    <div id="app"></div>
+
+    <script>
+        // ข้อมูลประเภทขยะ
+        const trashTypes = [
+            { id: 1, name: 'ขวดใหญ่', points: 10, icon: '🍾' },
+            { id: 2, name: 'ขวดเล็ก', points: 5, icon: '🧴' }
+        ];
+
+        const rewards = [
+            { id: 1, name: 'ปากกา', points: 50, icon: '✏️' },
+            { id: 2, name: 'สมุดโน้ต', points: 100, icon: '📓' },
+            { id: 3, name: 'ขนม', points: 30, icon: '🍫' },
+            { id: 4, name: 'ของเล่น', points: 200, icon: '🎮' },
+            { id: 5, name: 'เสื้อโรงเรียน', points: 500, icon: '👕' }
+        ];
+
+        // ตัวแปรสถานะ
+        let currentUser = null;
+        let users = JSON.parse(localStorage.getItem('ecopoint_users') || '[]');
+        let transactions = JSON.parse(localStorage.getItem('ecopoint_transactions') || '[]');
+        let currentPage = 'home';
+
+        // ฟังก์ชันบันทึกข้อมูล
+        function saveData() {
+            localStorage.setItem('ecopoint_users', JSON.stringify(users));
+            localStorage.setItem('ecopoint_transactions', JSON.stringify(transactions));
+        }
+
+        // ฟังก์ชันเข้าสู่ระบบ
+        function handleLogin() {
+            const name = document.getElementById('login-name').value.trim();
+            const studentId = document.getElementById('login-id').value.trim();
+            
+            if (!name || !studentId) {
+                alert('กรุณากรอกข้อมูลให้ครบถ้วน');
+                return;
+            }
+
+            let user = users.find(u => u.studentId === studentId);
+            
+            if (!user) {
+                user = {
+                    id: Date.now(),
+                    name: name,
+                    studentId: studentId,
+                    points: 0,
+                    totalTrash: 0
+                };
+                users.push(user);
+                saveData();
+            }
+            
+            currentUser = user;
+            currentPage = 'dashboard';
+            render();
+        }
+
+        // ฟังก์ชันออกจากระบบ
+        function handleLogout() {
+            currentUser = null;
+            currentPage = 'home';
+            render();
+        }
+
+        // ฟังก์ชันแลกขยะ
+        function handleTrashExchange(trashType, weight) {
+            if (!weight || weight <= 0) {
+                alert('กรุณาใส่น้ำหนักที่ถูกต้อง');
+                return;
+            }
+
+            const pointsEarned = Math.floor(trashType.points * weight);
+            
+            users = users.map(u => 
+                u.id === currentUser.id 
+                    ? { ...u, points: u.points + pointsEarned, totalTrash: u.totalTrash + parseFloat(weight) }
+                    : u
+            );
+
+            transactions.push({
+                id: Date.now(),
+                userId: currentUser.id,
+                trashType: trashType.name,
+                weight: parseFloat(weight),
+                points: pointsEarned,
+                date: new Date().toLocaleDateString('th-TH')
+            });
+
+            currentUser = users.find(u => u.id === currentUser.id);
+            saveData();
+            
+            alert(`แลกขยะสำเร็จ! ได้รับ ${pointsEarned} EcoPoint`);
+            render();
+        }
+
+        // ฟังก์ชันแลกของรางวัล
+        function handleRewardExchange(reward) {
+            if (currentUser.points < reward.points) {
+                alert('EcoPoint ไม่เพียงพอ');
+                return;
+            }
+
+            if (confirm(`ต้องการแลก ${reward.name} ใช่หรือไม่? (${reward.points} EcoPoint)`)) {
+                users = users.map(u => 
+                    u.id === currentUser.id 
+                        ? { ...u, points: u.points - reward.points }
+                        : u
+                );
+                currentUser = users.find(u => u.id === currentUser.id);
+                saveData();
+                alert(`แลกรางวัล ${reward.name} สำเร็จ!`);
+                render();
+            }
+        }
+
+        // แสดงหน้าแรก (Login)
+        function renderHome() {
+            return `
+                <div class="max-w-4xl mx-auto pt-8 px-4">
+                    <div class="text-center mb-12">
+                        <div class="text-6xl mb-4">♻️</div>
+                        <h1 class="text-4xl font-bold text-green-700 mb-2">ตรวจสอบคะแนน EcoPoint</h1>
+                        <p class="text-gray-600">นวัตกรรมเพื่อสิ่งแวดล้อม - โรงเรียน</p>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-8 mb-12">
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h2 class="text-xl font-bold mb-4 text-green-700">เข้าสู่ระบบ / ลงทะเบียน</h2>
+                            <div>
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium mb-2">ชื่อ-นามสกุล</label>
+                                    <input type="text" id="login-name" class="w-full p-2 border rounded" />
+                                </div>
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium mb-2">รหัสนักเรียน</label>
+                                    <input type="text" id="login-id" class="w-full p-2 border rounded" />
+                                </div>
+                                <button onclick="handleLogin()" class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition">
+                                    เข้าสู่ระบบ
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h2 class="text-xl font-bold mb-4 text-blue-700">อัตราแลกเปลี่ยน</h2>
+                            <div class="space-y-3">
+                                ${trashTypes.map(trash => `
+                                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                                        <div class="flex items-center gap-3">
+                                            <span class="text-2xl">${trash.icon}</span>
+                                            <span class="font-medium">${trash.name}</span>
+                                        </div>
+                                        <span class="text-green-600 font-bold">${trash.points} EcoPoint/กก.</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // แสดงหน้าแลกขยะ
+        function renderExchange() {
+            return `
+                <div class="max-w-2xl mx-auto">
+                    <h2 class="text-2xl font-bold mb-6 text-green-700">แลกขยะรับคะแนน</h2>
+                    
+                    <div class="grid grid-cols-2 gap-4 mb-6">
+                        ${trashTypes.map(trash => `
+                            <button onclick="selectTrash(${trash.id})" 
+                                id="trash-btn-${trash.id}"
+                                class="p-4 rounded-lg border-2 border-gray-200 hover:border-green-300 transition">
+                                <div class="text-4xl mb-2">${trash.icon}</div>
+                                <div class="font-medium text-sm">${trash.name}</div>
+                                <div class="text-green-600 text-xs mt-1">${trash.points} EcoPoint/กก.</div>
+                            </button>
+                        `).join('')}
+                    </div>
+
+                    <div id="exchange-form" class="hidden bg-white p-6 rounded-lg shadow-md">
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-2">น้ำหนัก (กิโลกรัม)</label>
+                            <input type="number" step="0.1" min="0.1" id="trash-weight" 
+                                class="w-full p-2 border rounded" placeholder="0.0" 
+                                oninput="updatePoints()" />
+                        </div>
+                        <div id="points-preview" class="mb-4 p-3 bg-green-50 rounded hidden">
+                            <p class="text-green-700">คะแนนที่จะได้: <strong id="preview-points">0</strong> EcoPoint</p>
+                        </div>
+                        <button onclick="submitExchange()" class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition">
+                            ยืนยันการแลก
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // แสดงหน้าอันดับ
+        function renderLeaderboard() {
+            const sortedUsers = [...users].sort((a, b) => b.points - a.points);
+            
+            return `
+                <div class="max-w-2xl mx-auto">
+                    <h2 class="text-2xl font-bold mb-6 text-yellow-700 flex items-center gap-2">
+                        🏆 อันดับผู้นำ
+                    </h2>
+                    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                        ${sortedUsers.length === 0 ? `
+                            <div class="p-8 text-center text-gray-500">ยังไม่มีข้อมูล</div>
+                        ` : sortedUsers.map((user, index) => `
+                            <div class="flex items-center justify-between p-4 border-b ${
+                                index === 0 ? 'bg-yellow-50' : index === 1 ? 'bg-gray-50' : ''
+                            }">
+                                <div class="flex items-center gap-4">
+                                    <div class="text-2xl font-bold ${
+                                        index === 0 ? 'text-yellow-500' : 
+                                        index === 1 ? 'text-gray-400' : 
+                                        index === 2 ? 'text-orange-400' : 'text-gray-300'
+                                    }">
+                                        #${index + 1}
+                                    </div>
+                                    <div>
+                                        <div class="font-medium">${user.name}</div>
+                                        <div class="text-sm text-gray-500">${user.studentId}</div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="font-bold text-green-600">${user.points} EcoPoint</div>
+                                    <div class="text-sm text-gray-500">${user.totalTrash.toFixed(1)} กก.</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // แสดงหน้าของรางวัล
+        function renderRewards() {
+            return `
+                <div class="max-w-2xl mx-auto">
+                    <h2 class="text-2xl font-bold mb-6 text-purple-700 flex items-center gap-2">
+                        🎁 ของรางวัล
+                    </h2>
+                    <div class="mb-4 p-4 bg-blue-50 rounded-lg">
+                        <p class="text-sm">EcoPoint ของคุณ: <strong class="text-lg text-blue-600">${currentUser.points}</strong> คะแนน</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        ${rewards.map(reward => `
+                            <div class="bg-white p-6 rounded-lg shadow-md">
+                                <div class="text-5xl mb-3">${reward.icon}</div>
+                                <h3 class="font-bold text-lg mb-2">${reward.name}</h3>
+                                <p class="text-purple-600 font-medium mb-3">${reward.points} EcoPoint</p>
+                                <button onclick="handleRewardExchange(${JSON.stringify(reward).replace(/"/g, '&quot;')})"
+                                    class="w-full py-2 rounded-lg transition ${
+                                        currentUser.points >= reward.points
+                                            ? 'bg-purple-600 text-white hover:bg-purple-700'
+                                            : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                    }"
+                                    ${currentUser.points < reward.points ? 'disabled' : ''}>
+                                    ${currentUser.points >= reward.points ? 'แลกเลย' : 'EcoPoint ไม่พอ'}
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // แสดงเนวิเกชัน
+        function renderNav() {
+            return `
+                <nav class="bg-white shadow-md">
+                    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="text-green-600 text-3xl">♻️</span>
+                            <h1 class="text-xl font-bold text-green-700">EcoPoint</h1>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="text-right">
+                                <div class="font-medium">${currentUser.name}</div>
+                                <div class="text-sm text-green-600 font-semibold">${currentUser.points} EcoPoint</div>
+                            </div>
+                            <button onclick="handleLogout()" class="p-2 hover:bg-gray-100 rounded-full transition">
+                                ⎋
+                            </button>
+                        </div>
+                    </div>
+                    <div class="max-w-6xl mx-auto px-4 flex gap-4 pb-2">
+                        <button onclick="changePage('dashboard')" class="px-4 py-2 rounded-t ${currentPage === 'dashboard' ? 'bg-green-100 text-green-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
+                            แลกขยะ
+                        </button>
+                        <button onclick="changePage('leaderboard')" class="px-4 py-2 rounded-t ${currentPage === 'leaderboard' ? 'bg-yellow-100 text-yellow-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
+                            อันดับ
+                        </button>
+                        <button onclick="changePage('rewards')" class="px-4 py-2 rounded-t ${currentPage === 'rewards' ? 'bg-purple-100 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
+                            ของรางวัล
+                        </button>
+                    </div>
+                </nav>
+            `;
+        }
+
+        // เปลี่ยนหน้า
+        function changePage(page) {
+            currentPage = page;
+            render();
+        }
+
+        // ตัวแปรสำหรับเก็บขยะที่เลือก
+        let selectedTrash = null;
+
+        function selectTrash(trashId) {
+            selectedTrash = trashTypes.find(t => t.id === trashId);
+            
+            // เปลี่ยนสีปุ่ม
+            trashTypes.forEach(t => {
+                const btn = document.getElementById(`trash-btn-${t.id}`);
+                if (t.id === trashId) {
+                    btn.className = 'p-4 rounded-lg border-2 border-green-500 bg-green-50 transition';
+                } else {
+                    btn.className = 'p-4 rounded-lg border-2 border-gray-200 hover:border-green-300 transition';
+                }
+            });
+            
+            // แสดงฟอร์ม
+            document.getElementById('exchange-form').classList.remove('hidden');
+            document.getElementById('trash-weight').value = '';
+            document.getElementById('points-preview').classList.add('hidden');
+        }
+
+        function updatePoints() {
+            const weight = parseFloat(document.getElementById('trash-weight').value);
+            if (weight > 0 && selectedTrash) {
+                const points = Math.floor(selectedTrash.points * weight);
+                document.getElementById('preview-points').textContent = points;
+                document.getElementById('points-preview').classList.remove('hidden');
+            } else {
+                document.getElementById('points-preview').classList.add('hidden');
+            }
+        }
+
+        function submitExchange() {
+            const weight = parseFloat(document.getElementById('trash-weight').value);
+            if (selectedTrash && weight > 0) {
+                handleTrashExchange(selectedTrash, weight);
+                selectedTrash = null;
+            }
+        }
+
+        // แสดงผล
+        function render() {
+            const app = document.getElementById('app');
+            
+            if (!currentUser) {
+                app.innerHTML = renderHome();
+            } else {
+                let content = '';
+                if (currentPage === 'dashboard') content = renderExchange();
+                else if (currentPage === 'leaderboard') content = renderLeaderboard();
+                else if (currentPage === 'rewards') content = renderRewards();
+                
+                app.innerHTML = renderNav() + `<div class="max-w-6xl mx-auto p-4 py-8">${content}</div>`;
+            }
+        }
+
+        // เริ่มต้นแอป
+        render();
+    </script>
+</body>
+</html>
