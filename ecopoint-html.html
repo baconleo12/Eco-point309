@@ -31,14 +31,55 @@
 
         let currentUser = null;
         let isAdmin = false;
-        let users = JSON.parse(localStorage.getItem('ecopoint_users') || '[]');
-        let transactions = JSON.parse(localStorage.getItem('ecopoint_transactions') || '[]');
+        let users = [];
+        let transactions = [];
         let currentPage = 'home';
         let editingUser = null;
 
-        function saveData() {
-            localStorage.setItem('ecopoint_users', JSON.stringify(users));
-            localStorage.setItem('ecopoint_transactions', JSON.stringify(transactions));
+        // Initialize from memory storage
+        async function loadData() {
+            try {
+                const usersResult = await window.storage.get('ecopoint_users');
+                const transactionsResult = await window.storage.get('ecopoint_transactions');
+                const sessionResult = await window.storage.get('ecopoint_session');
+                
+                users = usersResult ? JSON.parse(usersResult.value) : [];
+                transactions = transactionsResult ? JSON.parse(transactionsResult.value) : [];
+                
+                // Restore session
+                if (sessionResult) {
+                    const session = JSON.parse(sessionResult.value);
+                    if (session.isAdmin) {
+                        isAdmin = true;
+                        currentPage = 'admin-dashboard';
+                    } else if (session.userId) {
+                        currentUser = users.find(u => u.id === session.userId);
+                        if (currentUser) {
+                            currentPage = session.currentPage || 'profile';
+                        }
+                    }
+                }
+            } catch (error) {
+                users = [];
+                transactions = [];
+            }
+        }
+
+        async function saveData() {
+            try {
+                await window.storage.set('ecopoint_users', JSON.stringify(users));
+                await window.storage.set('ecopoint_transactions', JSON.stringify(transactions));
+                
+                // Save session
+                const session = {
+                    isAdmin: isAdmin,
+                    userId: currentUser ? currentUser.id : null,
+                    currentPage: currentPage
+                };
+                await window.storage.set('ecopoint_session', JSON.stringify(session));
+            } catch (error) {
+                console.error('Error saving data:', error);
+            }
         }
 
         function handleStudentLogin() {
@@ -64,6 +105,7 @@
             
             currentUser = user;
             currentPage = 'profile';
+            saveData();
             render();
         }
 
@@ -74,6 +116,7 @@
             if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
                 isAdmin = true;
                 currentPage = 'admin-dashboard';
+                saveData();
                 render();
             } else {
                 alert('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
@@ -84,10 +127,11 @@
             currentUser = null;
             isAdmin = false;
             currentPage = 'home';
+            saveData();
             render();
         }
 
-        function createNewUser() {
+        async function createNewUser() {
             const name = prompt('ชื่อ-นามสกุล:');
             if (!name) {
                 alert('กรุณากรอกชื่อ-นามสกุล');
@@ -122,13 +166,13 @@
             };
             
             users.push(newUser);
-            saveData();
+            await saveData();
             alert('สร้างบัญชีสำเร็จ!\nชื่อ: ' + newUser.name + '\nรหัส: ' + newUser.studentId);
             currentPage = 'admin-dashboard';
             render();
         }
 
-        function deleteUser(userId) {
+        async function deleteUser(userId) {
             const user = users.find(u => u.id === userId);
             if (!user) return;
             
@@ -150,7 +194,7 @@
             
             users = users.filter(u => u.id !== userId);
             transactions = transactions.filter(t => t.userId !== userId);
-            saveData();
+            await saveData();
             alert('ลบบัญชี ' + user.name + ' สำเร็จ');
             currentPage = 'admin-dashboard';
             render();
@@ -177,19 +221,19 @@
         window.handleEditPoints = handleEditPoints;
         window.handleResetPassword = handleResetPassword;
 
-        function resetPassword(userId) {
+        async function resetPassword(userId) {
             const newPassword = prompt('รหัสผ่านใหม่:');
             if (!newPassword) return;
             
             users = users.map(u => 
                 u.id === userId ? { ...u, password: newPassword } : u
             );
-            saveData();
+            await saveData();
             alert('รีเซ็ตรหัสผ่านสำเร็จ!');
             render();
         }
 
-        function editPoints(userId) {
+        async function editPoints(userId) {
             const user = users.find(u => u.id === userId);
             const newPoints = prompt('แก้ไขคะแนนของ ' + user.name + '\nคะแนนปัจจุบัน: ' + user.points, user.points);
             
@@ -204,7 +248,7 @@
             users = users.map(u => 
                 u.id === userId ? { ...u, points: points } : u
             );
-            saveData();
+            await saveData();
             alert('แก้ไขคะแนนสำเร็จ!');
             render();
         }
@@ -216,7 +260,7 @@
             render();
         }
 
-        function submitAdminExchange() {
+        async function submitAdminExchange() {
             const trashId = document.getElementById('admin-trash-type').value;
             const weight = parseFloat(document.getElementById('admin-weight').value);
             
@@ -245,7 +289,7 @@
                 addedBy: 'admin'
             });
 
-            saveData();
+            await saveData();
             alert('บันทึกสำเร็จ! ' + editingUser.name + ' ได้รับ ' + pointsEarned + ' EcoPoint');
             editingUser = null;
             currentPage = 'admin-dashboard';
@@ -270,22 +314,22 @@
             alert('ส่งออกข้อมูลสำเร็จ!');
         }
 
-        function importData() {
+        async function importData() {
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'application/json';
-            input.onchange = function(e) {
+            input.onchange = async function(e) {
                 const file = e.target.files[0];
                 if (!file) return;
                 
                 const reader = new FileReader();
-                reader.onload = function(event) {
+                reader.onload = async function(event) {
                     try {
                         const data = JSON.parse(event.target.result);
                         if (confirm('นำเข้าข้อมูลจะเขียนทับข้อมูลเดิม ต้องการดำเนินการต่อหรือไม่?')) {
                             users = data.users || [];
                             transactions = data.transactions || [];
-                            saveData();
+                            await saveData();
                             alert('นำเข้าข้อมูลสำเร็จ!');
                             render();
                         }
@@ -298,7 +342,7 @@
             input.click();
         }
 
-        function handleRewardExchange(rewardId, rewardName, rewardPoints) {
+        async function handleRewardExchange(rewardId, rewardName, rewardPoints) {
             if (currentUser.points < rewardPoints) {
                 alert('EcoPoint ไม่เพียงพอ');
                 return;
@@ -322,7 +366,7 @@
                 });
                 
                 currentUser = users.find(u => u.id === currentUser.id);
-                saveData();
+                await saveData();
                 alert('แลกรางวัล ' + rewardName + ' สำเร็จ!');
                 render();
             }
@@ -330,6 +374,7 @@
 
         function changePage(page) {
             currentPage = page;
+            saveData();
             render();
         }
 
@@ -537,6 +582,9 @@
                             <button onclick="changePage('profile')" class="px-4 py-2 rounded-t ${currentPage === 'profile' ? 'bg-green-100 text-green-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
                                 โปรไฟล์
                             </button>
+                            <button onclick="changePage('leaderboard')" class="px-4 py-2 rounded-t ${currentPage === 'leaderboard' ? 'bg-yellow-100 text-yellow-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
+                                อันดับ
+                            </button>
                             <button onclick="changePage('rewards')" class="px-4 py-2 rounded-t ${currentPage === 'rewards' ? 'bg-purple-100 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}">
                                 ของรางวัล
                             </button>
@@ -584,120 +632,4 @@
                                                     <div class="text-sm text-gray-500">
                                                         ${new Date(t.date).toLocaleString('th-TH')}
                                                         ${t.weight ? ' • ' + t.weight + ' กก.' : ''}
-                                                    </div>
-                                                </div>
-                                                <div class="text-right">
-                                                    <div class="font-bold ${t.points > 0 ? 'text-green-600' : 'text-red-600'}">
-                                                        ${t.points > 0 ? '+' : ''}${t.points} EcoPoint
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                `}
-                            </div>
-                        </div>
-                    `;
-                } else if (currentPage === 'rewards') {
-                    html += `
-                        <div class="max-w-4xl mx-auto">
-                            <h2 class="text-2xl font-bold mb-6 text-purple-700 flex items-center gap-2">
-                                🎁 ของรางวัล
-                            </h2>
-                            <div class="mb-4 p-4 bg-blue-50 rounded-lg">
-                                <p class="text-sm">EcoPoint ของคุณ: <strong class="text-lg text-blue-600">${currentUser.points}</strong> คะแนน</p>
-                            </div>
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                ${rewards.map(reward => `
-                                    <div class="bg-white p-6 rounded-lg shadow-md">
-                                        <div class="text-5xl mb-3 text-center">${reward.icon}</div>
-                                        <h3 class="font-bold text-lg mb-2 text-center">${reward.name}</h3>
-                                        <p class="text-purple-600 font-medium text-center mb-3">${reward.points} EcoPoint</p>
-                                        <button onclick="handleRewardExchange(${reward.id}, '${reward.name}', ${reward.points})" 
-                                            class="w-full py-2 rounded-lg transition ${
-                                                currentUser.points >= reward.points
-                                                    ? 'bg-purple-600 text-white hover:bg-purple-700'
-                                                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                                            }"
-                                            ${currentUser.points < reward.points ? 'disabled' : ''}>
-                                            ${currentUser.points >= reward.points ? 'แลกเลย' : 'EcoPoint ไม่พอ'}
-                                        </button>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                html += `</div>`;
-            } else {
-                html = `
-                    <div class="max-w-4xl mx-auto pt-8 px-4">
-                        <div class="text-center mb-12">
-                            <div class="text-6xl mb-4">♻️</div>
-                            <h1 class="text-4xl font-bold text-green-700 mb-2">ตรวจสอบคะแนน EcoPoint</h1>
-                            <p class="text-gray-600">นวัตกรรมเพื่อสิ่งแวดล้อม - โรงเรียน</p>
-                        </div>
-
-                        <div class="grid md:grid-cols-2 gap-8 mb-12">
-                            <div class="bg-white p-6 rounded-lg shadow-md">
-                                <h2 class="text-xl font-bold mb-4 text-green-700">เข้าสู่ระบบนักเรียน</h2>
-                                <div>
-                                    <div class="mb-4">
-                                        <label class="block text-sm font-medium mb-2">รหัสนักเรียน</label>
-                                        <input type="text" id="login-id" class="w-full p-2 border rounded" />
-                                    </div>
-                                    <div class="mb-4">
-                                        <label class="block text-sm font-medium mb-2">รหัสผ่าน</label>
-                                        <input type="password" id="login-password" class="w-full p-2 border rounded" />
-                                    </div>
-                                    <button onclick="handleStudentLogin()" class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition mb-2">
-                                        เข้าสู่ระบบ
-                                    </button>
-                                    <p class="text-xs text-gray-500 text-center">หากลืมรหัสผ่าน กรุณาติดต่อ Admin</p>
-                                </div>
-                            </div>
-
-                            <div class="bg-white p-6 rounded-lg shadow-md border-2 border-blue-200">
-                                <h2 class="text-xl font-bold mb-4 text-blue-700">เข้าระบบผู้ดูแล</h2>
-                                <div>
-                                    <div class="mb-4">
-                                        <label class="block text-sm font-medium mb-2">ชื่อผู้ใช้</label>
-                                        <input type="text" id="admin-username" class="w-full p-2 border rounded" />
-                                    </div>
-                                    <div class="mb-4">
-                                        <label class="block text-sm font-medium mb-2">รหัสผ่าน</label>
-                                        <input type="password" id="admin-password" class="w-full p-2 border rounded" />
-                                    </div>
-                                    <button onclick="handleAdminLogin()" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition">
-                                        เข้าระบบผู้ดูแล
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-white p-6 rounded-lg shadow-md max-w-md mx-auto">
-                            <h2 class="text-xl font-bold mb-4 text-center text-blue-700">อัตราแลกเปลี่ยน</h2>
-                            <div class="space-y-3">
-                                ${trashTypes.map(trash => `
-                                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
-                                        <div class="flex items-center gap-3">
-                                            <span class="text-2xl">${trash.icon}</span>
-                                            <span class="font-medium">${trash.name}</span>
-                                        </div>
-                                        <span class="text-green-600 font-bold">${trash.points} EcoPoint/กก.</span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-            
-            app.innerHTML = html;
-        }
-
-        render();
-    </script>
-</body>
-</html>
+                                                    </div
